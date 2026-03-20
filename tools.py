@@ -1,0 +1,218 @@
+from supabase import create_client
+from langchain_core.tools import tool
+from datetime import date
+import os, httpx
+from dotenv import load_dotenv
+from typing import List
+
+load_dotenv()  # Add this — must be BEFORE create_client
+
+from supabase import create_client
+
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_ANON_KEY"))
+
+TIME_SLOTS = {
+    "morning":   ["7:00 AM - 7:30 AM","7:30 AM - 8:00 AM","8:00 AM - 8:30 AM",
+                  "8:30 AM - 9:00 AM","9:00 AM - 9:30 AM","9:30 AM - 10:00 AM",
+                  "10:00 AM - 10:30 AM","10:30 AM - 11:00 AM"],
+    "afternoon": ["4:00 PM - 4:30 PM","4:30 PM - 5:00 PM"],
+    "evening":   ["5:00 PM - 5:30 PM","5:30 PM - 6:00 PM","6:00 PM - 6:30 PM",
+                  "6:30 PM - 7:00 PM","7:00 PM - 7:30 PM","7:30 PM - 8:00 PM",
+                  "8:00 PM - 8:30 PM","8:30 PM - 9:00 PM","9:00 PM - 9:30 PM",
+                  "9:30 PM - 10:00 PM","10:00 PM - 10:30 PM","10:30 PM - 11:00 PM"],
+}
+
+
+@tool
+def check_available_slots(booking_date: str, time_block: str) -> str:
+    """
+    Check which slots are available for a given date and time block.
+    booking_date: YYYY-MM-DD format
+    time_block: 'morning', 'afternoon', or 'evening'
+    """
+    try:
+        response = supabase.table("bookings") \
+            .select("slots") \
+            .eq("booking_date", booking_date) \
+            .eq("time_block", time_block) \
+            .execute()
+
+        booked = []
+        for row in response.data:
+            slots = row["slots"]
+            if isinstance(slots, list):
+                booked.extend(slots)
+            elif isinstance(slots, str):
+                import json
+                booked.extend(json.loads(slots))
+
+        all_slots = TIME_SLOTS.get(time_block, [])
+        available = [s for s in all_slots if s not in booked]
+
+        if not available:
+            return f"No slots available for {time_block} on {booking_date}."
+        return f"Available {time_block} slots on {booking_date}:\n" + \
+               "\n".join(f"- {s}" for s in available)
+
+    except Exception as e:
+        return f"Error checking slots: {str(e)}"
+
+
+@tool
+def create_booking(
+    name: str, 
+    phone: str, 
+    email: str,
+    booking_date: str, 
+    time_block: str,
+    slots: List[str], 
+    promo_code: str = "") -> str:
+
+    """
+    Create a booking in the database and send email confirmation.
+    slots: list of slot strings e.g. ["7:00 PM - 7:30 PM"]
+    """
+    try:
+        # Check for conflicts first
+        response = supabase.table("bookings") \
+            .select("slots") \
+            .eq("booking_date", booking_date) \
+            .eq("time_block", time_block) \
+            .execute()
+
+        booked = []
+        for row in response.data:
+            s = row["slots"]
+            booked.extend(s if isinstance(s, list) else __import__('json').loads(s))
+
+        conflict = [s for s in slots if s in booked]
+        if conflict:
+            return f"Sorry, these slots were just taken: {', '.join(conflict)}. Please choose different slots."
+
+        # Promo logic
+        VIBESLOT_ELIGIBLE = ["4:00 PM - 4:30 PM","4:30 PM - 5:00 PM",
+                             "5:00 PM - 5:30 PM","5:30 PM - 6:00 PM"]
+        is_vibeslot = (
+            promo_code.upper() == "VIBESLOT" and
+            all(s in VIBESLOT_ELIGIBLE for s in slots)
+        )
+        total_price = 0 if is_vibeslot else len(slots) * 250
+
+        # Insert booking
+        supabase.table("bookings").insert({
+            "name": name,
+            "phone": phone,
+            "email": email,
+            "booking_date": booking_date,
+            "time_block": time_block,
+            "slots": slots,
+            "promo_code": promo_code or None,
+            "total_price": total_price
+        }).execute()
+
+        # Send email via EmailJS REST API
+        price_display = "₹75 per player (on site)" if is_vibeslot else f"₹{total_price}"
+        send_email_confirmation(
+            to_email=email,
+            to_name=name,
+            booking_date=booking_date,
+            time_block=time_block,
+            selected_slots=", ".join(slots),
+            total_price=price_display,
+            phone=phone,
+            promo_code=promo_code or "None"
+        )
+
+        return (
+            f"✅ Booking confirmed!\n"
+            f"📅 Date: {booking_date}\n"
+            f"⏰ Slots: {', '.join(slots)}\n"
+            f"💰 Price: {price_display}\n"
+            f"📧 Confirmation sent to {email}"
+        )
+
+    except Exception as e:
+        return f"Booking failed: {str(e)}"
+
+
+@tool
+def cancel_booking(phone: str, booking_date: str) -> str:
+    """
+    Cancel a booking by phone number and date.
+    """
+    try:
+        result = supabase.table("bookings") \
+            .select("id, slots, booking_date") \
+            .eq("phone", phone) \
+            .eq("booking_date", booking_date) \
+            .execute()
+
+        if not result.data:
+            return f"No bookings found for {phone} on {booking_date}."
+
+        booking_id = result.data[0]["id"]
+        supabase.table("bookings").delete().eq("id", booking_id).execute()
+
+        return f"✅ Booking on {booking_date} has been cancelled successfully."
+
+    except Exception as e:
+        return f"Cancellation failed: {str(e)}"
+
+
+@tool
+def get_my_bookings(phone: str) -> str:
+    """
+    Get all upcoming bookings for a phone number.
+    """
+    try:
+        today = date.today().isoformat()
+        result = supabase.table("bookings") \
+            .select("*") \
+            .eq("phone", phone) \
+            .gte("booking_date", today) \
+            .order("booking_date") \
+            .execute()
+
+        if not result.data:
+            return "No upcoming bookings found for this number."
+
+        lines = []
+        for b in result.data:
+            slots = b["slots"] if isinstance(b["slots"], list) else __import__('json').loads(b["slots"])
+            lines.append(
+                f"📅 {b['booking_date']} | {b['time_block'].capitalize()} | "
+                f"{', '.join(slots)} | ₹{b['total_price']}"
+            )
+        return "Your upcoming bookings:\n" + "\n".join(lines)
+
+    except Exception as e:
+        return f"Error fetching bookings: {str(e)}"
+
+
+def send_email_confirmation(to_email, to_name, booking_date,
+                             time_block, selected_slots,
+                             total_price, phone, promo_code):
+    """Send email via EmailJS REST API."""
+    import httpx
+    try:
+        httpx.post(
+            "https://api.emailjs.com/api/v1.0/email/send",
+            json={
+                "service_id": os.getenv("EMAILJS_SERVICE_ID"),
+                "template_id": os.getenv("EMAILJS_TEMPLATE_ID"),
+                "user_id": os.getenv("EMAILJS_PUBLIC_KEY"),
+                "template_params": {
+                    "to_email": to_email,
+                    "to_name": to_name,
+                    "booking_date": booking_date,
+                    "time_block": time_block,
+                    "selected_slots": selected_slots,
+                    "total_price": total_price,
+                    "phone": phone,
+                    "promo_code": promo_code,
+                }
+            },
+            timeout=10
+        )
+    except Exception as e:
+        print(f"Email send failed: {e}")
