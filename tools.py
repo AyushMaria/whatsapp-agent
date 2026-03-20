@@ -193,9 +193,8 @@ def send_email_confirmation(to_email, to_name, booking_date,
                              time_block, selected_slots,
                              total_price, phone, promo_code):
     """Send email via EmailJS REST API."""
-    import httpx
     try:
-        httpx.post(
+        response = httpx.post(
             "https://api.emailjs.com/api/v1.0/email/send",
             json={
                 "service_id": os.getenv("EMAILJS_SERVICE_ID"),
@@ -207,12 +206,15 @@ def send_email_confirmation(to_email, to_name, booking_date,
                     "booking_date": booking_date,
                     "time_block": time_block,
                     "selected_slots": selected_slots,
-                    "total_price": total_price,
+                    "total_price": str(total_price),
                     "phone": phone,
-                    "promo_code": promo_code,
+                    "promo_code": promo_code or "None",
                 }
             },
             timeout=10
         )
+        print(f"EmailJS status: {response.status_code}")
+        print(f"EmailJS response: {response.text}")
     except Exception as e:
         print(f"Email send failed: {e}")
+
