@@ -47,4 +47,4 @@ async def webhook(
 
 @app.get("/health")
 def health():
-    return {"status": "Vibe & Volley Concierge is running 🏸"}
+    return {"status": "Ace is running 🏸"}
