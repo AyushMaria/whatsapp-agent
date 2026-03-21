@@ -5,8 +5,7 @@ import os, httpx
 from dotenv import load_dotenv
 from typing import List
 
-load_dotenv()  # Add this — must be BEFORE create_client
-
+load_dotenv()  
 
 from supabase import create_client
 
