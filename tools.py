@@ -295,6 +295,36 @@ def get_booking_stats() -> str:
     except Exception as e:
         return f"Error fetching stats: {str(e)}"
 
+@tool
+def get_bookings_by_phone(phones: List[str]) -> str:
+    """
+    Admin: Get all bookings for one or more phone numbers.
+    phones: list of phone numbers e.g. ["9876543210", "9123456789"]
+    """
+    try:
+        clean_phones = [p.replace("+91", "").replace(" ", "").strip() for p in phones]
+
+        result = supabase.table("bookings") \
+            .select("*") \
+            .in_("phone", clean_phones) \
+            .order("booking_date", desc=True) \
+            .execute()
+
+        if not result.data:
+            return f"No bookings found for: {', '.join(clean_phones)}"
+
+        lines = []
+        for b in result.data:
+            slots = b["slots"] if isinstance(b["slots"], list) else __import__('json').loads(b["slots"])
+            lines.append(
+                f"🆔 ID: {b['id']} | 👤 {b['name']} | 📞 {b['phone']} | "
+                f"📅 {b['booking_date']} | ⏰ {', '.join(slots)} | 💰 ₹{b['total_price']}"
+            )
+        return f"Bookings found:\n" + "\n".join(lines)
+
+    except Exception as e:
+        return f"Error fetching bookings: {str(e)}"
+
 
 
 def send_email_confirmation(to_email, to_name, booking_date,

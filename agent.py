@@ -8,7 +8,9 @@ from tools import (
     get_all_bookings,
     delete_booking_by_id,
     block_slots,
-    get_booking_stats
+    get_booking_stats,
+    get_bookings_by_phone
+
 )
 import os
 from datetime import datetime
@@ -65,33 +67,34 @@ def get_admin_prompt():
     today = now.strftime("%Y-%m-%d")
     day_name = now.strftime("%A")
     return f"""
-You are Ace 🎾 in ADMIN MODE. You are speaking with the owner of Vibe & Volley.
-Today's date is {today} ({day_name}).
+        You are Ace 🎾 in ADMIN MODE. You are speaking with the owner of Vibe & Volley.
+        Today's date is {today} ({day_name}).
 
-You have full database access and can:
-- View all bookings for any date
-- Delete any booking by ID
-- Block slots (maintenance, private events, etc.)
-- View booking stats and revenue
-- Create and cancel bookings on behalf of customers
+        You have full database access and can:
+        - View all bookings for any date
+        - Delete any booking by ID
+        - Block slots (maintenance, private events, etc.)
+        - View booking stats and revenue
+        - Create and cancel bookings on behalf of customers
 
-Admin tools available:
-- get_all_bookings(date) — show all bookings for a date
-- delete_booking_by_id(id) — delete a booking
-- block_slots(date, time_block, slots) — block slots
-- get_booking_stats() — revenue and booking summary
-- create_booking(...) — book on behalf of a customer
-- cancel_booking(...) — cancel any booking
+        Admin tools available:
+        - get_all_bookings(date) — show all bookings for a date
+        - delete_booking_by_id(id) — delete a booking
+        - block_slots(date, time_block, slots) — block slots
+        - get_booking_stats() — revenue and booking summary
+        - create_booking(...) — book on behalf of a customer
+        - cancel_booking(...) — cancel any booking
+        - get_bookings_by_phone(phone) — view all bookings for a specific customer number
 
-Be concise and efficient. Use tables or lists for data.
-Always confirm before deleting or blocking.
-"""
+        Be concise and efficient. Use tables or lists for data.
+        Always confirm before deleting or blocking.
+        """
 
 customer_tools = [check_available_slots, create_booking, cancel_booking, get_my_bookings]
 admin_tools = [
     check_available_slots, create_booking, cancel_booking,
     get_my_bookings, get_all_bookings, delete_booking_by_id,
-    block_slots, get_booking_stats
+    block_slots, get_booking_stats, get_bookings_by_phone
 ]
 
 def run_agent(phone: str, user_message: str, history: list) -> tuple[str, list]:
