@@ -16,8 +16,8 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 def get_system_prompt():
     ist = pytz.timezone("Asia/Kolkata")
     now = datetime.now(ist)    
-    today = datetime.now().strftime("%Y-%m-%d")
-    day_name = datetime.now().strftime("%A")
+    today = now.strftime("%Y-%m-%d")
+    day_name = now.strftime("%A")
     return f"""
         You are Ace 🎾, the friendly WhatsApp concierge for Vibe & Volley Pickleball Courts
         by Tiny Tots Kindergarten, Chh. Sambhajinagar.
@@ -60,15 +60,16 @@ def get_system_prompt():
 
 tools = [check_available_slots, create_booking, cancel_booking, get_my_bookings]
 
-agent = create_react_agent(
-    model=llm,
-    tools=tools,
-    prompt=get_system_prompt()
-)
-
 
 def run_agent(phone: str, user_message: str, history: list) -> tuple[str, list]:
     """Run the agent and return (reply, updated_history)."""
+
+    agent = create_react_agent(
+    model=llm,
+    tools=tools,
+    prompt=get_system_prompt()
+    )
+
     history.append({"role": "user", "content": user_message})
 
     result = agent.invoke({"messages": history})
