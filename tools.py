@@ -324,6 +324,53 @@ def get_bookings_by_phone(phones: List[str]) -> str:
 
     except Exception as e:
         return f"Error fetching bookings: {str(e)}"
+    
+
+
+
+@tool
+def get_bookings_by_name(names: List[str]) -> str:
+    """
+    Admin: Get all bookings for one or more customer names (partial match supported).
+    names: list of name strings e.g. ["Rahul", "Priya Sharma"]
+    """
+    try:
+        all_results = []
+
+        for name in names:
+            result = supabase.table("bookings") \
+                .select("*") \
+                .ilike("name", f"%{name}%") \
+                .neq("name", "BLOCKED") \
+                .order("booking_date", desc=True) \
+                .execute()
+
+            if result.data:
+                all_results.extend(result.data)
+
+        if not all_results:
+            return f"No bookings found for: {', '.join(names)}"
+
+        # Deduplicate by booking ID
+        seen = set()
+        unique = []
+        for b in all_results:
+            if b["id"] not in seen:
+                seen.add(b["id"])
+                unique.append(b)
+
+        lines = []
+        for b in unique:
+            slots = b["slots"] if isinstance(b["slots"], list) else __import__('json').loads(b["slots"])
+            lines.append(
+                f"🆔 ID: {b['id']} | 👤 {b['name']} | 📞 {b['phone']} | "
+                f"📅 {b['booking_date']} | ⏰ {', '.join(slots)} | 💰 ₹{b['total_price']}"
+            )
+        return f"Bookings found:\n" + "\n".join(lines)
+
+    except Exception as e:
+        return f"Error fetching bookings: {str(e)}"
+
 
 
 
