@@ -89,14 +89,44 @@ def create_booking(
         if conflict:
             return f"Sorry, these slots were just taken: {', '.join(conflict)}. Please choose different slots."
 
-        # Promo logic
-        VIBESLOT_ELIGIBLE = ["4:00 PM - 4:30 PM","4:30 PM - 5:00 PM",
-                             "5:00 PM - 5:30 PM","5:30 PM - 6:00 PM"]
-        is_vibeslot = (
-            promo_code.upper() == "VIBESLOT" and
-            all(s in VIBESLOT_ELIGIBLE for s in slots)
-        )
-        total_price = 0 if is_vibeslot else len(slots) * 250
+        # Base price
+        total_price = len(slots) * 250
+        price_display = f"₹{total_price}"
+
+        # Dynamic promo logic
+        if promo_code:
+            promo = supabase.table("promo_codes") \
+                .select("*") \
+                .eq("code", promo_code.upper()) \
+                .eq("active", True) \
+                .execute()
+
+            if not promo.data:
+                return "❌ Invalid or inactive promo code."
+
+            p = promo.data[0]
+
+            if p["expires_at"] and date.fromisoformat(p["expires_at"]) < date.today():
+                return "❌ This promo code has expired."
+
+            if len(slots) < p["min_slots"]:
+                return f"❌ This promo code requires at least {p['min_slots']} slots ({p['min_slots'] * 30} minutes minimum)."
+
+            if p["max_uses"] and p["uses_count"] >= p["max_uses"]:
+                return "❌ This promo code has reached its usage limit."
+
+            if p["discount_type"] == "flat":
+                total_price = max(0, total_price - p["discount_value"])
+            elif p["discount_type"] == "percent":
+                total_price = round(total_price * (1 - p["discount_value"] / 100))
+
+            price_display = f"₹{total_price}"
+
+            # Increment uses_count
+            supabase.table("promo_codes") \
+                .update({"uses_count": p["uses_count"] + 1}) \
+                .eq("code", promo_code.upper()) \
+                .execute()
 
         # Insert booking
         supabase.table("bookings").insert({
@@ -110,8 +140,7 @@ def create_booking(
             "total_price": total_price
         }).execute()
 
-        # Send email via EmailJS REST API
-        price_display = "₹75 per player (on site)" if is_vibeslot else f"₹{total_price}"
+        # Send email confirmation
         send_email_confirmation(
             to_email=email,
             to_name=name,
