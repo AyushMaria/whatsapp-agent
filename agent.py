@@ -10,7 +10,9 @@ from tools import (
     block_slots,
     get_booking_stats,
     get_bookings_by_phone, 
-    get_bookings_by_name
+    get_bookings_by_name,
+    create_promo_code,
+    edit_booking
 
 )
 import os
