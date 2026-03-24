@@ -112,6 +112,21 @@ def create_booking(
             if len(slots) < p["min_slots"]:
                 return f"❌ This promo code requires at least {p['min_slots']} slots ({p['min_slots'] * 30} minutes minimum)."
 
+            # Weekends only check
+            if p["weekends_only"]:
+                booking_weekday = date.fromisoformat(booking_date).weekday()
+                if booking_weekday not in (5, 6):  # 5 = Saturday, 6 = Sunday
+                    return "❌ This promo code is only valid on weekends (Saturday & Sunday)."
+            
+            # Check valid_slots restriction if defined
+            if p["valid_slots"]:
+                invalid = [s for s in slots if s not in p["valid_slots"]]
+                if invalid:
+                    return (
+                        f"❌ Promo code {promo_code.upper()} is only valid for these slots: "
+                        f"{', '.join(p['valid_slots'])}"
+                    )
+
             if p["max_uses"] and p["uses_count"] >= p["max_uses"]:
                 return "❌ This promo code has reached its usage limit."
 
@@ -408,7 +423,9 @@ def create_promo_code(
     discount_value: float,
     min_slots: int = 2,
     max_uses: int = None,
-    expires_at: str = None
+    expires_at: str = None,
+    valid_slots: List[str] = None,
+    weekends_only: bool = False
 ) -> str:
     """
     Admin: Create a new promo code.
@@ -418,6 +435,8 @@ def create_promo_code(
     min_slots: minimum slots required (default 2 = 1 hour)
     max_uses: max number of times it can be used (None = unlimited)
     expires_at: expiry date in YYYY-MM-DD format (None = no expiry)
+    valid_slots: list of slot strings this promo is restricted to (None = no restriction)
+    weekends_only: if True, promo is only valid on Saturdays and Sundays
     """
     try:
         supabase.table("promo_codes").insert({
@@ -426,12 +445,20 @@ def create_promo_code(
             "discount_value": discount_value,
             "min_slots": min_slots,
             "max_uses": max_uses,
-            "expires_at": expires_at
+            "expires_at": expires_at,
+            "valid_slots": valid_slots,
+            "weekends_only": weekends_only
         }).execute()
+
+        slot_info = f"\n🕐 Valid slots: {', '.join(valid_slots)}" if valid_slots else ""
+        weekend_info = "\n📅 Valid on: Weekends only" if weekends_only else ""
+
         return (
             f"✅ Promo code *{code.upper()}* created!\n"
             f"💰 Discount: {'₹' if discount_type == 'flat' else ''}{discount_value}{'%' if discount_type == 'percent' else ' off'}\n"
             f"⏱ Min slots: {min_slots} | Max uses: {max_uses or 'Unlimited'} | Expires: {expires_at or 'Never'}"
+            f"{slot_info}"
+            f"{weekend_info}"
         )
     except Exception as e:
         return f"Error creating promo code: {str(e)}"
