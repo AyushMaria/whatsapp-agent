@@ -42,7 +42,6 @@ def check_available_slots(booking_date: str, time_block: str) -> str:
         ):
             return "Morning slots for tomorrow are not available for booking after 11:00 PM. Please consider afternoon (4:00 PM onwards) or evening slots."
 
-    try:
         response = supabase.table("bookings") \
             .select("slots") \
             .eq("booking_date", booking_date) \
