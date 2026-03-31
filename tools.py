@@ -474,7 +474,7 @@ def create_promo_code(
         return (
             f"✅ Promo code *{code.upper()}* created!\n"
             f"💰 Discount: {'₹' if discount_type == 'flat' else ''}{discount_value}{'%' if discount_type == 'percent' else ' off'}\n"
-            f"⏱ Min slots: {min_slots} | Max uses: {max_uses or 'Unlimited'} | Expires: {expires_at or 'Never'}"
+            f"⏱ Min slots: {min_slots} | Max uses: {max_uses_per_phone or 'Unlimited'} | Expires: {expires_at or 'Never'}"
             f"{slot_info}"
             f"{weekend_info}"
         )
@@ -520,6 +520,7 @@ def edit_booking(
             updates["slots"] = new_slots
             base_price = len(new_slots) * 250
             new_total = base_price
+            promo_warning = ""
 
             # Re-apply promo code if one was used on the original booking
             promo_code = b.get("promo_code")
@@ -562,6 +563,8 @@ def edit_booking(
             f"\n🔄 Slots: {', '.join(old_slots)} → {', '.join(new_slots)}"
             f"\n💰 Price: ₹{old_price} → ₹{new_price}"
         ) if new_slots else ""
+
+        promo_warning = promo_warning if new_slots else ""
 
         return f"✅ Booking ID {booking_id} updated successfully.{slot_summary}{promo_warning}"
 
