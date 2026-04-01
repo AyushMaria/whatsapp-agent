@@ -616,3 +616,71 @@ def send_email_confirmation(to_email, to_name, booking_date,
     except Exception as e:
         print(f"Email send failed: {e}")
 
+@tool
+def edit_booking_total(
+    new_total: int,
+    booking_ids: List[int] = None,
+    phone: str = None,
+    name: str = None
+) -> str:
+    """
+    Admin: Override the total price for bookings by ID, phone number, or customer name.
+    At least one filter (booking_ids, phone, or name) must be provided.
+    new_total: the new total price to set (in ₹)
+    booking_ids: list of specific booking IDs to update (optional)
+    phone: update all bookings for this phone number (optional)
+    name: update all bookings matching this name (optional)
+    """
+    try:
+        if not any([booking_ids, phone, name]):
+            return "❌ Please provide at least one filter: booking_ids, phone, or name."
+
+        matched_ids = set()
+
+        # Fetch by booking IDs directly
+        if booking_ids:
+            result = supabase.table("bookings") \
+                .select("id, name, phone, booking_date, total_price") \
+                .in_("id", booking_ids) \
+                .execute()
+            for b in result.data:
+                matched_ids.add(b["id"])
+
+        # Fetch by phone
+        if phone:
+            clean_phone = phone.replace("+91", "").replace(" ", "").strip()
+            result = supabase.table("bookings") \
+                .select("id, name, phone, booking_date, total_price") \
+                .eq("phone", clean_phone) \
+                .neq("name", "BLOCKED") \
+                .execute()
+            for b in result.data:
+                matched_ids.add(b["id"])
+
+        # Fetch by name
+        if name:
+            result = supabase.table("bookings") \
+                .select("id, name, phone, booking_date, total_price") \
+                .ilike("name", f"%{name}%") \
+                .neq("name", "BLOCKED") \
+                .execute()
+            for b in result.data:
+                matched_ids.add(b["id"])
+
+        if not matched_ids:
+            return "❌ No matching bookings found for the provided filters."
+
+        # Apply update to all matched IDs
+        supabase.table("bookings") \
+            .update({"total_price": new_total}) \
+            .in_("id", list(matched_ids)) \
+            .execute()
+
+        return (
+            f"✅ Total updated to ₹{new_total} for {len(matched_ids)} booking(s).\n"
+            f"🆔 Affected IDs: {', '.join(str(i) for i in sorted(matched_ids))}"
+        )
+
+    except Exception as e:
+        return f"Error updating totals: {str(e)}"
+

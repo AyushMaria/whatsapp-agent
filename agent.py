@@ -12,7 +12,8 @@ from tools import (
     get_bookings_by_phone, 
     get_bookings_by_name,
     create_promo_code,
-    edit_booking
+    edit_booking,
+    edit_booking_total
 
 )
 import os
@@ -108,7 +109,7 @@ admin_tools = [
     check_available_slots, create_booking, cancel_booking,
     get_my_bookings, get_all_bookings, delete_booking_by_id,
     block_slots, get_booking_stats, get_bookings_by_phone, 
-    get_bookings_by_name, create_promo_code, edit_booking
+    get_bookings_by_name, create_promo_code, edit_booking, edit_booking_total
 ]
 
 def run_agent(phone: str, user_message: str, history: list) -> tuple[str, list]:
