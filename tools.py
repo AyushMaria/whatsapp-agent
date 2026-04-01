@@ -77,7 +77,9 @@ def create_booking(
     booking_date: str, 
     time_block: str,
     slots: List[str], 
-    promo_code: str = "") -> str:
+    promo_code: str = "",
+    paddle_rental: int = 0
+    ) -> str:
 
     """
     Create a booking in the database and send email confirmation.
@@ -102,6 +104,14 @@ def create_booking(
 
         # Base price
         total_price = len(slots) * 250
+
+        # Paddle rental pricing
+        if paddle_rental < 0 or paddle_rental > 2:
+            return "❌ Only 0, 1, or 2 premium paddles are available for rent."
+
+        paddle_hours = len(slots) * 0.5          # each slot = 30 mins = 0.5 hr
+        paddle_cost = round(paddle_rental * 50 * paddle_hours)
+        total_price += paddle_cost
         price_display = f"₹{total_price}"
 
         # Dynamic promo logic
@@ -171,7 +181,8 @@ def create_booking(
             "time_block": time_block,
             "slots": slots,
             "promo_code": promo_code or None,
-            "total_price": total_price
+            "total_price": total_price,
+            "paddle_rental": paddle_rental
         }).execute()
 
         # Send email confirmation
@@ -186,10 +197,13 @@ def create_booking(
             promo_code=promo_code or "None"
         )
 
+        paddle_line = f"\n🏓 Premium Paddles: {paddle_rental} (₹{paddle_cost})" if paddle_rental else ""
+
         return (
             f"✅ Booking confirmed!\n"
             f"📅 Date: {booking_date}\n"
             f"⏰ Slots: {', '.join(slots)}\n"
+            f"{paddle_line}"
             f"💰 Price: {price_display}\n"
             f"📧 Confirmation sent to {email}"
         )

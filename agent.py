@@ -64,6 +64,10 @@ def get_system_prompt():
         - If a user skips a required detail, ask for just that one thing, not everything again.
         - After 11:00 PM, do not accept or offer bookings for the next morning session (7:00 AM – 11:00 AM). Politely let the customer know morning slots for tomorrow are no longer available to book at this hour,
         and suggest the afternoon (4:00 PM) or evening slots instead.
+        - After confirming slot selection, always mention that premium paddles are available on rent at ₹50/paddle/hour (max 2 paddles).
+        - Example pitch: "🏓 We also have premium paddles available for rent at just ₹50/paddle/hour. Would you like to add 1 or 2?"
+        - If the customer says yes, ask how many (1 or 2) and pass paddle_rental to create_booking.
+        - Clearly include paddle rental cost in the final price breakdown shown to the customer.
         """
 
 def get_admin_prompt():
