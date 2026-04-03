@@ -1,11 +1,13 @@
 from supabase import create_client
 from langchain_core.tools import tool
-from datetime import date, datetime, timedelta
-import os, pytz
+from datetime import date
+import os, httpx
 from dotenv import load_dotenv
 from typing import List
 
 load_dotenv()  
+
+from supabase import create_client
 
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_ANON_KEY"))
 
