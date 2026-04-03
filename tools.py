@@ -506,84 +506,90 @@ def edit_booking(
     new_slots: List[str] = None,
     new_name: str = None,
     new_phone: str = None,
-    new_email: str = None
+    new_email: str = None,
+    new_promo_code: str = None   # ✅ ADD THIS
 ) -> str:
     """
     Admin: Edit an existing booking by ID. Only provided fields will be updated.
-    Automatically recalculates total price if slots are changed.
-    booking_id: ID of the booking to edit
-    new_date: new date in YYYY-MM-DD format (optional)
-    new_slots: new list of slot strings (optional)
-    new_name: updated customer name (optional)
-    new_phone: updated phone number (optional)
-    new_email: updated email address (optional)
+    Automatically recalculates total price if slots or promo code are changed.
+    new_promo_code: apply or change the promo code on this booking (pass empty string "" to remove it)
     """
     try:
-        existing = supabase.table("bookings") \
-            .select("*").eq("id", booking_id).execute()
-
+        existing = supabase.table("bookings").select("*").eq("id", booking_id).execute()
         if not existing.data:
             return f"No booking found with ID {booking_id}."
 
         b = existing.data[0]
         updates = {}
 
-        if new_date: updates["booking_date"] = new_date
-        if new_name: updates["name"] = new_name
+        if new_date:  updates["booking_date"] = new_date
+        if new_name:  updates["name"] = new_name
         if new_phone: updates["phone"] = new_phone
         if new_email: updates["email"] = new_email
 
-        # Recalculate price if slots are changing
+        # Use new_slots if provided, else fall back to existing slots
+        active_slots = new_slots if new_slots else (
+            b["slots"] if isinstance(b["slots"], list) else json.loads(b["slots"])
+        )
         if new_slots:
             updates["slots"] = new_slots
-            base_price = len(new_slots) * 250
-            new_total = base_price
+
+        # Determine which promo to apply
+        # new_promo_code="" means remove promo; None means don't touch it
+        if new_promo_code is not None:
+            promo_to_apply = new_promo_code.strip().upper() if new_promo_code else None
+        else:
+            promo_to_apply = b.get("promo_code")  # keep existing
+
+        # Recalculate price if slots or promo changed
+        if new_slots or new_promo_code is not None:
+            base_price = len(active_slots) * 250
+            paddle_rental = b.get("paddle_rental", 0) or 0
+            paddle_cost = round(paddle_rental * 50 * len(active_slots) * 0.5)
+            new_total = base_price + paddle_cost
             promo_warning = ""
 
-            # Re-apply promo code if one was used on the original booking
-            promo_code = b.get("promo_code")
-            if promo_code:
+            if promo_to_apply:
                 promo = supabase.table("promo_codes") \
                     .select("*") \
-                    .eq("code", promo_code.upper()) \
+                    .eq("code", promo_to_apply) \
                     .eq("active", True) \
                     .execute()
 
-                if promo.data:
-                    p = promo.data[0]
+                if not promo.data:
+                    return f"❌ Promo code {promo_to_apply} is invalid or inactive."
 
-                    # Check min slots still satisfied
-                    if len(new_slots) < p["min_slots"]:
-                        promo_warning = (
-                            f"\n⚠️ Promo code {promo_code.upper()} requires at least {p['min_slots']} slots "
-                            f"({p['min_slots'] * 30} mins minimum) — it has not been applied. "
-                            f"Full price of ₹{base_price} applies."
-                        )
-                    else:
-                        if p["discount_type"] == "flat":
-                            new_total = max(0, base_price - p["discount_value"])
-                        elif p["discount_type"] == "percent":
-                            new_total = round(base_price * (1 - p["discount_value"] / 100))
+                p = promo.data[0]
+
+                if p["expires_at"] and date.fromisoformat(p["expires_at"]) < date.today():
+                    return f"❌ Promo code {promo_to_apply} has expired."
+
+                if len(active_slots) < p["min_slots"]:
+                    promo_warning = (
+                        f"\n⚠️ Promo {promo_to_apply} requires {p['min_slots']} slots minimum "
+                        f"— not applied. Full price ₹{new_total} applies."
+                    )
+                    promo_to_apply = None  # Don't apply if min_slots not met
+                else:
+                    if p["discount_type"] == "flat":
+                        new_total = max(0, new_total - p["discount_value"])
+                    elif p["discount_type"] == "percent":
+                        new_total = round(new_total * (1 - p["discount_value"] / 100))
 
             updates["total_price"] = new_total
+            updates["promo_code"] = promo_to_apply  # None if removed/invalid
 
         if not updates:
             return "No changes provided."
 
         supabase.table("bookings").update(updates).eq("id", booking_id).execute()
 
-        # Build a readable summary
-        old_slots = b["slots"] if isinstance(b["slots"], list) else __import__('json').loads(b["slots"])
         old_price = b["total_price"]
         new_price = updates.get("total_price", old_price)
-        slot_summary = (
-            f"\n🔄 Slots: {', '.join(old_slots)} → {', '.join(new_slots)}"
-            f"\n💰 Price: ₹{old_price} → ₹{new_price}"
-        ) if new_slots else ""
+        price_info = f"\n💰 Price: ₹{old_price} → ₹{new_price}" if "total_price" in updates else ""
+        promo_info = f"\n🎟️ Promo: {updates['promo_code'] or 'None'}" if "promo_code" in updates else ""
 
-        promo_warning = promo_warning if new_slots else ""
-
-        return f"✅ Booking ID {booking_id} updated successfully.{slot_summary}{promo_warning}"
+        return f"✅ Booking ID {booking_id} updated.{price_info}{promo_info}{promo_warning if 'promo_warning' in dir() else ''}"
 
     except Exception as e:
         return f"Error editing booking: {str(e)}"

@@ -101,7 +101,7 @@ def get_admin_prompt():
         - get_bookings_by_phone(phone) — view all bookings for a specific customer number
         - get_bookings_by_name(names) — search bookings by customer name (partial match)
         - create_promo_code(code, discount_type, discount_value, ...) — create a new promo code
-        - edit_booking(id, ...) — edit date, slots, name, phone or email of a booking
+        - edit_booking(id, ...) — edit date, slots, name, phone or email of a booking or promo code of a booking; recalculates price automatically
         - edit_booking_total(new_total, ...) — override total price by booking ID, phone, or name
         - get_revenue(after_date, before_date, name, phone, email) — get total revenue with optional filters;
           supports date ranges (e.g. after April 1st, before March 31st, or between two dates),
