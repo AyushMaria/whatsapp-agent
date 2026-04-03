@@ -2,9 +2,10 @@ from supabase import create_client
 from langchain_core.tools import tool
 from datetime import date, datetime, timedelta
 import pytz
-import os, httpx, json
+import os, json
 from dotenv import load_dotenv
-from typing import List
+from typing import List, optional
+from main import send_email_confirmation
 
 load_dotenv()
 
@@ -58,10 +59,7 @@ def check_available_slots(booking_date: str, time_block: str) -> str:
 
         if not available:
             return f"No slots available for {time_block} on {booking_date}."
-        return f"Available {time_block} slots on {booking_date}:
-" + \
-               "
-".join(f"- {s}" for s in available)
+        return f"Available {time_block} slots on {booking_date}:\n" + "\n".join(f"- {s}" for s in available)
 
     except Exception as e:
         return f"Error checking slots: {str(e)}"
@@ -77,7 +75,7 @@ def create_booking(
     slots: List[str],
     promo_code: str = "",
     paddle_rental: int = 0,
-    payment_mode: str = None
+    payment_mode: str = optional(str)
 ) -> str:
     """
     Create a booking in the database and send email confirmation.
@@ -173,7 +171,7 @@ def create_booking(
             "payment_mode": payment_mode
         }).execute()
 
-        from main import send_email_confirmation
+        
         send_email_confirmation(
             to_email=email,
             to_name=name,
@@ -329,22 +327,24 @@ def edit_promo_code(
         return f"✅ Promo code {code.upper()} updated."
     except Exception as e:
         return f"Error: {str(e)}"
-Fix imports, timedelta, and formatting in tools.py
+
 
 @tool
 def edit_booking(
     booking_id: int,
-    **kwargs
+    booking_date: str = None,
+    time_block: str = None,
+    slots: List[str] = None,
+    payment_mode: str = None
 ) -> str:
-    """
-    Admin: Edit an existing booking.
-    """
-    try:
-        supabase.table("bookings").update(kwargs).eq("id", booking_id).execute()
-        return f"✅ Booking {booking_id} updated."
-    except Exception as e:
-        return f"Error: {str(e)}"
-
+    updates = {k: v for k, v in {
+        "booking_date": booking_date,
+        "time_block": time_block,
+        "slots": slots,
+        "payment_mode": payment_mode
+    }.items() if v is not None}
+    supabase.table("bookings").update(updates).eq("id", booking_id).execute()
+    return f"✅ Booking {booking_id} updated."
 
 @tool
 def get_revenue(
@@ -359,7 +359,7 @@ def get_revenue(
         if after_date:  query = query.gte("booking_date", after_date)
         if before_date: query = query.lte("booking_date", before_date)
         result = query.execute()
-        total = sum(b["total_price"] for b in result.data)
+        total = sum((b["total_price"] or 0) for b in result.data)
         return f"💰 Total Revenue: ₹{total}"
     except Exception as e:
         return str(e)
