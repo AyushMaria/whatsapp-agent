@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 import pytz
 import os, json
 from dotenv import load_dotenv
-from typing import List, optional
+from typing import List, Optional
 from main import send_email_confirmation
 
 load_dotenv()
@@ -75,7 +75,7 @@ def create_booking(
     slots: List[str],
     promo_code: str = "",
     paddle_rental: int = 0,
-    payment_mode: str = optional(str)
+    payment_mode: str = Optional(str)
 ) -> str:
     """
     Create a booking in the database and send email confirmation.
@@ -183,23 +183,16 @@ def create_booking(
             promo_code=promo_code or "None"
         )
 
-        paddle_line = f"
-🏓 Premium Paddles: {paddle_rental} (₹{paddle_cost})" if paddle_rental else ""
-        payment_line = f"
-💳 Payment: {payment_mode} (pay after you play)" if payment_mode else ""
+        paddle_line = f"🏓 Premium Paddles: {paddle_rental} (₹{paddle_cost})" if paddle_rental else ""
+        payment_line = f"💳 Payment: {payment_mode} (pay after you play)" if payment_mode else ""
 
         return (
-            f"✅ Booking confirmed!
-"
-            f"📅 Date: {booking_date}
-"
-            f"⏰ Slots: {', '.join(slots)}
-"
+            f"✅ Booking confirmed!"
+            f"📅 Date: {booking_date}"
+            f"⏰ Slots: {', '.join(slots)}"
             f"{paddle_line}"
-            f"💰 Price: {price_display}
-"
-            f"{payment_line}
-"
+            f"💰 Price: {price_display}"
+            f"{payment_line}"
             f"📧 Confirmation sent to {email}"
         )
 
@@ -251,8 +244,7 @@ def get_my_bookings(phone: str) -> str:
         for b in result.data:
             slots = b["slots"] if isinstance(b["slots"], list) else json.loads(b["slots"])
             lines.append(f"📅 {b['booking_date']} | {b['time_block']} | {', '.join(slots)}")
-        return "
-".join(lines)
+        return "".join(lines)
 
     except Exception as e:
         return f"Error: {str(e)}"
@@ -277,8 +269,7 @@ def get_all_bookings(booking_date: str) -> str:
         for b in result.data:
             slots = b["slots"] if isinstance(b["slots"], list) else json.loads(b["slots"])
             lines.append(f"🆔 {b['id']} | 👤 {b['name']} | 📞 {b['phone']} | ⏰ {', '.join(slots)}")
-        return "
-".join(lines)
+        return "".join(lines)
 
     except Exception as e:
         return f"Error: {str(e)}"
