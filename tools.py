@@ -1,7 +1,7 @@
 from supabase import create_client
 from langchain_core.tools import tool
 from datetime import date, datetime, timedelta
-import os, httpx
+import os, httpx, json
 from dotenv import load_dotenv
 from typing import List
 import pytz
