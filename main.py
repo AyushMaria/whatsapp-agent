@@ -1,7 +1,6 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Form, BackgroundTasks
 from fastapi.responses import Response
 from twilio.rest import Client
-from twilio.twiml.messaging_response import MessagingResponse
 from dotenv import load_dotenv
 from agent import run_agent, run_admin_agent
 from sessions import get_session, update_session
@@ -17,21 +16,14 @@ TWILIO_NUMBER = os.environ["TWILIO_WHATSAPP_NUMBER"]
 ADMIN_PHONE = os.getenv("ADMIN_PHONE", "").replace("+91", "").replace(" ", "")
 
 
-@app.post("/webhook")
-async def webhook(
-    Body: str = Form(...),
-    From: str = Form(...)
-):
-    """Twilio WhatsApp webhook endpoint."""
-    user_message = Body.strip()
-    sender = From
+async def process_message(user_message: str, sender: str):
+    """Runs in the background — no Twilio timeout risk."""
+    phone = sender.replace("whatsapp:", "")
+    clean_phone = phone.replace("+91", "").replace(" ", "")
 
     history = get_session(sender)
 
-    clean_sender = sender.replace("whatsapp:", "").replace("+91", "").replace(" ", "")
-    phone = sender.replace("whatsapp:", "")
-    
-    if clean_sender == ADMIN_PHONE:
+    if clean_phone == ADMIN_PHONE:
         reply, updated_history = run_admin_agent(phone, user_message, history)
     else:
         reply, updated_history = run_agent(phone, user_message, history)
@@ -43,32 +35,30 @@ async def webhook(
     elif not isinstance(reply, str):
         reply = str(reply)
 
-    # Split on [SPLIT] to send two separate WhatsApp messages
+    # Split on [SPLIT] and send all parts via REST API
     parts = [p.strip() for p in reply.split("[SPLIT]") if p.strip()]
 
-    if len(parts) >= 2:
-        # Send the first message via TwiML (synchronous response)
-        resp = MessagingResponse()
-        resp.message(parts[0])
+    for part in parts:
+        try:
+            twilio_client.messages.create(
+                from_=TWILIO_NUMBER,
+                to=sender,
+                body=part
+            )
+        except Exception as e:
+            print(f"[ERROR] Failed to send message: {e}")
 
-        # Send all subsequent parts via Twilio REST API
-        for extra in parts[1:]:
-            try:
-                twilio_client.messages.create(
-                    from_=TWILIO_NUMBER,
-                    to=sender,
-                    body=extra  
-                )
-            except Exception as e:
-                print(f"[ERROR] Failed to send split message: {e}")
 
-        return Response(content=str(resp), media_type="application/xml")
-
-    else:
-        # Normal single message
-        resp = MessagingResponse()
-        resp.message(parts[0] if parts else reply)
-        return Response(content=str(resp), media_type="application/xml")
+@app.post("/webhook")
+async def webhook(
+    background_tasks: BackgroundTasks,
+    Body: str = Form(...),
+    From: str = Form(...)
+):
+    """Twilio WhatsApp webhook endpoint — responds instantly, processes in background."""
+    background_tasks.add_task(process_message, Body.strip(), From)
+    # Return empty 200 immediately — well under Twilio's 15s timeout
+    return Response(content="", media_type="application/xml")
 
 
 @app.get("/health")
