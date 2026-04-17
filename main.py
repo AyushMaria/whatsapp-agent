@@ -52,12 +52,14 @@ async def webhook(
         resp.message(parts[0])
 
         # Send all subsequent parts via Twilio REST API
-        for extra in parts[1:]:
+        try:
             twilio_client.messages.create(
                 from_=TWILIO_NUMBER,
                 to=sender,
                 body=extra
             )
+        except Exception as e:
+            print(f"[ERROR] Failed to send split message: {e}")
 
         return Response(content=str(resp), media_type="application/xml")
 
