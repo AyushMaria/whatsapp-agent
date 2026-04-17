@@ -61,19 +61,33 @@ def get_system_prompt():
         - If slots are taken, sympathize briefly and suggest nearby alternatives right away.
 
         Booking Rules:
-        - Always confirm details (name, phone, email, date, time) before creating a booking.
-        - Use YYYY-MM-DD format for dates internally, but show friendly dates to users (e.g. "Monday, 23 March")
-        - Never make up slot availability — always use the check_available_slots tool.
-        - If a user skips a required detail, ask for just that one thing, not everything again.
-        - After 11:00 PM, do not accept or offer bookings for the next morning session (7:00 AM – 11:00 AM). Politely let the customer know morning slots for tomorrow are no longer available to book at this hour,
-        and suggest the afternoon (4:00 PM) or evening slots instead.
-        - After confirming slot selection, always mention that premium paddles are available on rent at ₹50/paddle/hour (max 2 paddles).
-        - Example pitch: "🏓 We also have premium paddles available for rent at just ₹50/paddle/hour. Would you like to add 1 or 2?"
-        - If the customer says yes, ask how many (1 or 2) and pass paddle_rental to create_booking.
-        - Clearly include paddle rental cost in the final price breakdown shown to the customer.
-        - Always inform the customer that payment is collected after they play — the court does not
-        accept any advance payments and then ask the customer how they would like to pay: Cash or UPI. These are the only two accepted payment modes.
-        - Pass the customer's choice as payment_mode to create_booking ("Cash" or "UPI").
+        - Once a slot is confirmed as available, send EXACTLY this one-shot booking message (fill in the actual time and date):
+
+          "⚡ [Time] on [Friendly Date] is available!
+        
+          To confirm your booking, reply in this format:
+          Name | Email | Paddles (0, 1, or 2 — ₹50/paddle) | Payment (Cash or UPI)
+        
+          📌 Example: John Appleseed | john@gmail.com | 2 | UPI
+          _(Payment is collected after you play — no advance needed)_"
+        - The customer's WhatsApp phone number is: {phone}. Use this as the phone field when calling create_booking() — never ask the customer for their phone number.
+        
+        - Wait for the customer's single reply. Parse it for: name, email, paddle_rental,
+          and payment_mode. Phone number is already known from the session context.
+        
+        - VALIDATION RULES after receiving the reply:
+          - If paddles > 2: reply "Max 2 paddles allowed. I'll set it to 2 — confirm?" and proceed.
+          - If payment is not Cash/UPI: ask only for payment mode, nothing else.
+          - If any other field is missing: ask for only that missing field in one short message.
+          - If all fields valid: call create_booking() immediately. No further confirmation asks.
+        
+        - AMBIGUITY RULE: If the customer replies "Ok", "Fine", "Sure", "Alright" after
+          a constraint message (e.g., max paddles), treat it as acceptance. Do NOT re-ask.
+          Proceed with the constrained value.
+        
+        - After create_booking() succeeds, send a confirmation like:
+          "✅ Booking confirmed! [Name], you're booked for [Date], [Time].
+           Paddles: [X] | Total: ₹[Amount] | Pay via [Mode] after you play. See you! 🏓"
         """
 
 def get_admin_prompt():
@@ -124,7 +138,7 @@ admin_tools = [
 
 def run_agent(phone: str, user_message: str, history: list) -> tuple[str, list]:
     """Run the customer agent."""
-    agent = create_react_agent(model=llm, tools=customer_tools, prompt=get_system_prompt())
+    agent = create_react_agent(model=llm, tools=customer_tools, prompt=get_system_prompt(phone))
     history.append({"role": "user", "content": user_message})
     result = agent.invoke({"messages": history})
     messages = result["messages"]
