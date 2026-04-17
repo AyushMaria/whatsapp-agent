@@ -2,7 +2,7 @@
 from supabase import create_client
 import os
 
-supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_ANON_KEY"])
 
 def get_session(phone: str) -> list:
     result = supabase.table("sessions").select("history").eq("phone", phone).execute()
