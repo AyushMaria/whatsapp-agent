@@ -15,7 +15,8 @@ from tools import (
     edit_booking,
     edit_booking_total,
     get_revenue,
-    edit_promo_code
+    edit_promo_code,
+    add_paddle_rental
 )
 import os
 from datetime import datetime
