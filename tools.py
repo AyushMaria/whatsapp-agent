@@ -119,9 +119,9 @@ def create_booking(
         provided_email = (email or "").strip()
 
         customer_lookup = supabase.table("customers") \
-            .select("email") \
-            .eq("phone", canonical_phone) \
-            .limit(1) \
+            .select("email, phone") \
+            .in_("phone", phone_variants(canonical_phone)) \
+            .limit(10) \
             .execute()
 
         saved_email = ""
@@ -250,10 +250,10 @@ def create_booking(
         return (
             f"✅ Booking confirmed!\n"
             f"📅 Date: {booking_date}\n"
-            f"⏰ Slots: {', '.join(slots)}\n"
+            f"⏰ Slots: {', '.join(slots)}"
             f"{paddle_line}"
+            f"{payment_line}\n"
             f"💰 Price: {price_display}\n"
-            f"{paddle_line}"
             f"📧 Confirmation sent to {resolved_email}"
         )
 
@@ -267,9 +267,11 @@ def cancel_booking(phone: str, booking_date: str) -> str:
     Cancel a booking by phone number and date.
     """
     try:
+        variants = phone_variants(phone)
+
         result = supabase.table("bookings") \
             .select("id, slots, booking_date") \
-            .eq("phone", phone) \
+            .in_("phone", variants) \
             .eq("booking_date", booking_date) \
             .execute()
 
@@ -292,9 +294,11 @@ def get_my_bookings(phone: str) -> str:
     """
     try:
         today = date.today().isoformat()
+        variants = phone_variants(phone)
+
         result = supabase.table("bookings") \
             .select("*") \
-            .eq("phone", phone) \
+            .in_("phone", variants) \
             .gte("booking_date", today) \
             .order("booking_date") \
             .execute()
@@ -454,8 +458,6 @@ def get_bookings_by_phone(phones: List[str]) -> str:
     except Exception as e:
         return f"Error fetching bookings: {str(e)}"
     
-    
-
 
 @tool
 def get_bookings_by_name(names: List[str]) -> str:
@@ -574,7 +576,7 @@ def edit_booking(
 
         if new_date:  updates["booking_date"] = new_date
         if new_name:  updates["name"] = new_name
-        if new_phone: updates["phone"] = new_phone
+        if new_phone: updates["phone"] = normalize_phone(new_phone)
         if new_email: updates["email"] = new_email
 
         # Use new_slots if provided, else fall back to existing slots
@@ -681,7 +683,7 @@ def edit_booking_total(
     booking_ids: List[int] = None,
     phone: str = None,
     name: str = None
-) -> str:
+    ) -> str:
     """
     Admin: Override the total price for bookings by ID, phone number, or customer name.
     At least one filter (booking_ids, phone, or name) must be provided.
@@ -707,10 +709,10 @@ def edit_booking_total(
 
         # Fetch by phone
         if phone:
-            clean_phone = phone.replace("+91", "").replace(" ", "").strip()
+            variants = phone_variants(phone)
             result = supabase.table("bookings") \
                 .select("id, name, phone, booking_date, total_price") \
-                .eq("phone", clean_phone) \
+                .in_("phone", variants) \
                 .neq("name", "BLOCKED") \
                 .execute()
             for b in result.data:
@@ -751,7 +753,7 @@ def get_revenue(
     name: str = None,
     phone: str = None,
     email: str = None
-) -> str:
+    ) -> str:
     """
     Admin: Get total revenue filtered by date range, customer name, phone, or email.
     Filters can be combined (e.g. after_date + before_date for a range).
@@ -774,8 +776,7 @@ def get_revenue(
         if before_date:
             query = query.lte("booking_date", before_date)
         if phone:
-            clean_phone = phone.replace("+91", "").replace(" ", "").strip()
-            query = query.eq("phone", clean_phone)
+            query = query.in_("phone", phone_variants(phone))
         if email:
             query = query.eq("email", email)
 
@@ -933,12 +934,15 @@ def get_customer_by_phone(phone: str) -> dict:
 def create_customer_profile(phone: str, name: str, email: str) -> dict:
     """Save or update a customer's profile in the customers table."""
     try:
+        
+        canonical_phone = normalize_phone(phone)
+
         supabase.table("customers").upsert({
-            "phone": phone,
+            "phone": canonical_phone,
             "name": name,
             "email": email
         }, on_conflict="phone").execute()
-        return {"success": True}
+    
     except Exception as e:
         print(f"[create_customer_profile error] {e}")
         return {"success": False, "error": str(e)}
@@ -965,10 +969,10 @@ def sync_website_customers(dry_run: bool = False) -> str:
         seen = {}
         for b in bookings_res.data:
             raw_phone = b.get("phone", "") or ""
-            phone = raw_phone.replace("+91", "").replace(" ", "").strip()
+            phone = normalize_phone(raw_phone)
             if not phone:
                 continue
-            # Last-write wins — later bookings have higher IDs (already ordered by insert)
+
             seen[phone] = {
                 "phone": phone,
                 "name": b.get("name", "").strip(),
