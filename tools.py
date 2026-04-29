@@ -891,3 +891,74 @@ def create_customer_profile(phone: str, name: str, email: str) -> dict:
     except Exception as e:
         print(f"[create_customer_profile error] {e}")
         return {"success": False, "error": str(e)}
+
+
+@tool
+def sync_website_customers(dry_run: bool = False) -> str:
+    """
+    Admin: Sync customers from the bookings table into the customers table.
+    Finds all bookings whose phone number is not yet in the customers table,
+    then upserts them (name, phone, email).
+    dry_run=True will preview the records without writing anything.
+    """
+    try:
+        # Fetch all non-blocked bookings with name/phone/email
+        bookings_res = supabase.table("bookings") \
+            .select("name, phone, email") \
+            .neq("name", "BLOCKED") \
+            .execute()
+
+        if not bookings_res.data:
+            return "No bookings found."
+
+        # Normalize phones and deduplicate (keep latest name/email per phone)
+        seen = {}
+        for b in bookings_res.data:
+            raw_phone = b.get("phone", "") or ""
+            phone = raw_phone.replace("+91", "").replace(" ", "").strip()
+            if not phone:
+                continue
+            # Last-write wins — later bookings have higher IDs (already ordered by insert)
+            seen[phone] = {
+                "phone": phone,
+                "name": b.get("name", "").strip(),
+                "email": b.get("email", "").strip() or None
+            }
+
+        all_booking_phones = list(seen.keys())
+
+        # Find which phones are already in customers
+        existing_res = supabase.table("customers") \
+            .select("phone") \
+            .in_("phone", all_booking_phones) \
+            .execute()
+
+        existing_phones = {r["phone"] for r in existing_res.data}
+        to_sync = [v for k, v in seen.items() if k not in existing_phones]
+
+        if not to_sync:
+            return "✅ All booking customers are already in the customers table. Nothing to sync."
+
+        if dry_run:
+            preview = "\n".join(
+                f"  • {r['name']} | {r['phone']} | {r['email'] or 'no email'}"
+                for r in to_sync
+            )
+            return (
+                f"🔍 Dry run — {len(to_sync)} customer(s) would be synced:\n{preview}\n\n"
+                f"Run sync_website_customers(dry_run=False) to apply."
+            )
+
+        # Upsert into customers
+        supabase.table("customers").upsert(
+            to_sync, on_conflict="phone"
+        ).execute()
+
+        summary = "\n".join(
+            f"  ✅ {r['name']} | {r['phone']} | {r['email'] or 'no email'}"
+            for r in to_sync
+        )
+        return f"✅ Synced {len(to_sync)} customer(s) into the customers table:\n{summary}"
+
+    except Exception as e:
+        return f"Error syncing customers: {str(e)}"
