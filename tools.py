@@ -108,7 +108,7 @@ def create_booking(
     promo_code: str = "",
     paddle_rental: int = 0,
     payment_mode: str = None
-) -> str:
+    ) -> str:
 
     """
     Create a booking in the database and send email confirmation.
@@ -422,25 +422,35 @@ def get_booking_stats() -> str:
         return f"Error fetching stats: {str(e)}"
 
 @tool
-def get_customer_by_phone(phone: str) -> dict:
-    """Look up a customer's saved profile using their phone number.
-    Returns name and email if found, or indicates they are a new customer."""
-    variants = phone_variants(phone)
-    result = supabase.table("customers") \
-        .select("name, email, phone") \
-        .in_("phone", variants) \
-        .execute()
+def get_bookings_by_phone(phones: List[str]) -> str:
+    """
+    Admin: Get all bookings for one or more phone numbers.
+    phones: list of phone numbers e.g. ["9876543210", "9123456789"]
+    """
+    try:
+        clean_phones = [p.replace("+91", "").replace(" ", "").strip() for p in phones]
 
-    if result.data:
-        customer = next((r for r in result.data if (r.get("email") or "").strip()), result.data[0])
-        return {
-            "found": True,
-            "name": customer["name"],
-            "email": customer["email"],
-            "phone": customer["phone"]
-        }
+        result = supabase.table("bookings") \
+            .select("*") \
+            .in_("phone", clean_phones) \
+            .order("booking_date", desc=True) \
+            .execute()
 
-    return {"found": False}
+        if not result.data:
+            return f"No bookings found for: {', '.join(clean_phones)}"
+
+        lines = []
+        for b in result.data:
+            slots = b["slots"] if isinstance(b["slots"], list) else __import__('json').loads(b["slots"])
+            lines.append(
+                f"🆔 ID: {b['id']} | 👤 {b['name']} | 📞 {b['phone']} | "
+                f"📅 {b['booking_date']} | ⏰ {', '.join(slots)} | 💰 ₹{b['total_price']}"
+            )
+        return f"Bookings found:\n" + "\n".join(lines)
+
+    except Exception as e:
+        return f"Error fetching bookings: {str(e)}"
+    
     
 
 
@@ -498,7 +508,7 @@ def create_promo_code(
     expires_at: str = None,
     valid_slots: List[str] = None,
     weekends_only: bool = False
-) -> str:
+    ) -> str:
     """
     Admin: Create a new promo code.
     code: promo code string e.g. 'SUMMER50'
@@ -544,7 +554,7 @@ def edit_booking(
     new_phone: str = None,
     new_email: str = None,
     new_promo_code: str = None   # ✅ ADD THIS
-) -> str:
+    ) -> str:
     """
     Admin: Edit an existing booking by ID. Only provided fields will be updated.
     Automatically recalculates total price if slots or promo code are changed.
@@ -899,9 +909,21 @@ def add_paddle_rental(booking_id: str, paddle_count: int) -> dict:
 def get_customer_by_phone(phone: str) -> dict:
     """Look up a customer's saved profile using their phone number.
     Returns name and email if found, or indicates they are a new customer."""
-    result = supabase.table("customers").select("name, email").eq("phone", phone).execute()
+    variants = phone_variants(phone)
+    result = supabase.table("customers") \
+        .select("name, email, phone") \
+        .in_("phone", variants) \
+        .execute()
+
     if result.data:
-        return {"found": True, "name": result.data[0]["name"], "email": result.data[0]["email"]}
+        customer = next((r for r in result.data if (r.get("email") or "").strip()), result.data[0])
+        return {
+            "found": True,
+            "name": customer["name"],
+            "email": customer["email"],
+            "phone": customer["phone"]
+        }
+
     return {"found": False}
 
 @tool
