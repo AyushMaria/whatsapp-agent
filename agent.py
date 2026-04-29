@@ -99,11 +99,15 @@ def get_system_prompt(phone: str = ""):
         1. Silently call get_customer_by_phone(phone={phone}) before responding to anything.
 
         - IF found=True (returning customer with saved profile):
-            - You already know their name and email. Do NOT ask for them.
+            - You already know their name and email from get_customer_by_phone(). Do NOT ask for them.
             - Greet them by first name: "Welcome back, [First Name]! 👋"
             - Proceed directly to the one-shot booking message with ONLY:
             "Payment (Cash or UPI)"
             (Name and Email are already known — exclude them from the format)
+            - CRITICAL: When calling create_booking() for a returning customer, always use the exact saved email returned by get_customer_by_phone().
+            - Never invent, guess, modify, or substitute a different email address.
+            - If the user replies only with payment mode (e.g. "UPI" or "Cash"), call create_booking() using:
+            saved name + saved email + session phone + chosen payment mode.
             - Example one-shot for returning customer:
             "⚡ [Time] on [Date] is available!
             To confirm, reply: Payment (Cash or UPI)

@@ -101,7 +101,7 @@ def check_available_slots(booking_date: str, time_block: str) -> str:
 def create_booking(
     name: str, 
     phone: str, 
-    email: str,
+    email: str = "",
     booking_date: str, 
     time_block: str,
     slots: List[str], 
@@ -115,6 +115,23 @@ def create_booking(
     slots: list of slot strings e.g. ["7:00 PM - 7:30 PM"]
     """
     try:
+        canonical_phone = normalize_phone(phone)
+        provided_email = (email or "").strip()
+
+        customer_lookup = supabase.table("customers") \
+            .select("email") \
+            .eq("phone", canonical_phone) \
+            .limit(1) \
+            .execute()
+
+        saved_email = ""
+        if customer_lookup.data:
+            saved_email = (customer_lookup.data[0].get("email") or "").strip()
+
+        resolved_email = saved_email or provided_email
+        if not resolved_email:
+            return "❌ I couldn't find an email for this booking. Please provide the customer's email."
+
         # Check for conflicts first
         response = supabase.table("bookings") \
             .select("slots") \
@@ -182,7 +199,7 @@ def create_booking(
                 usage = supabase.table("promo_usage") \
                     .select("id") \
                     .eq("promo_code", promo_code.upper()) \
-                    .eq("phone", phone) \
+                    .eq("phone", canonical_phone) \
                     .execute()
 
                 if len(usage.data) >= p["max_uses_per_phone"]:
@@ -198,14 +215,14 @@ def create_booking(
             # Log usage
             supabase.table("promo_usage").insert({
                 "promo_code": promo_code.upper(),
-                "phone": phone
+                "phone": canonical_phone
             }).execute()
 
         # Insert booking
         supabase.table("bookings").insert({
             "name": name,
-            "phone": phone,
-            "email": email,
+            "phone": canonical_phone,
+            "email": resolved_email,
             "booking_date": booking_date,
             "time_block": time_block,
             "slots": slots,
@@ -217,13 +234,13 @@ def create_booking(
 
         # Send email confirmation
         send_email_confirmation(
-            to_email=email,
+            to_email=resolved_email,
             to_name=name,
             booking_date=booking_date,
             time_block=time_block,
             selected_slots=", ".join(slots),
             total_price=price_display,
-            phone=phone,
+            phone=canonical_phone,
             promo_code=promo_code or "None"
         )
 
@@ -237,7 +254,7 @@ def create_booking(
             f"{paddle_line}"
             f"💰 Price: {price_display}\n"
             f"{paddle_line}"
-            f"📧 Confirmation sent to {email}"
+            f"📧 Confirmation sent to {resolved_email}"
         )
 
     except Exception as e:
