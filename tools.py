@@ -233,7 +233,7 @@ def create_booking(
         }).execute()
 
         # Send email confirmation
-        send_email_confirmation(
+        email_sent = send_email_confirmation(
             to_email=resolved_email,
             to_name=name,
             booking_date=booking_date,
@@ -241,9 +241,11 @@ def create_booking(
             selected_slots=", ".join(slots),
             total_price=price_display,
             phone=canonical_phone,
-            promo_code=promo_code or "None"
+            promo_code=promo_code or "",
+            paddle_rental=paddle_rental,
+            paddle_cost=paddle_cost
         )
-
+        email_line = f"📧 Confirmation sent to {resolved_email}" if email_sent else "⚠️ Email confirmation could not be sent — please note your booking details above."
         paddle_line = f"\n🏓 Premium Paddles: {paddle_rental} (₹{paddle_cost})" if paddle_rental else ""
         payment_line = f"\n💳 Payment: {payment_mode} (pay after you play)" if payment_mode else ""
 
@@ -254,7 +256,7 @@ def create_booking(
             f"{paddle_line}"
             f"{payment_line}\n"
             f"💰 Price: {price_display}\n"
-            f"📧 Confirmation sent to {resolved_email}"
+            f"{email_line}"
         )
 
     except Exception as e:
@@ -647,10 +649,23 @@ def edit_booking(
         return f"Error editing booking: {str(e)}"
 
 
-def send_email_confirmation(to_email, to_name, booking_date,
-                             time_block, selected_slots,
-                             total_price, phone, promo_code):
-    """Send email via EmailJS REST API."""
+def send_email_confirmation(
+    to_email, to_name, booking_date, time_block,
+    selected_slots, total_price, phone,
+    promo_code="", paddle_rental=0, paddle_cost=0
+) -> bool:
+    """Send booking confirmation email via EmailJS REST API.
+    Returns True if sent successfully, False otherwise."""
+
+    required_vars = ["EMAILJS_SERVICE_ID", "EMAILJS_TEMPLATE_ID", "EMAILJS_PUBLIC_KEY", "EMAILJS_PRIVATE_KEY"]
+    missing = [v for v in required_vars if not os.getenv(v)]
+    if missing:
+        print(f"[send_email_confirmation] Missing env vars: {', '.join(missing)}")
+        return False
+
+    paddle_line = f"{paddle_rental} paddle(s) — ₹{paddle_cost}" if paddle_rental else "None"
+    promo_display = promo_code.upper() if promo_code else "No promo applied"
+
     try:
         response = httpx.post(
             "https://api.emailjs.com/api/v1.0/email/send",
@@ -663,19 +678,25 @@ def send_email_confirmation(to_email, to_name, booking_date,
                     "to_email": to_email,
                     "to_name": to_name,
                     "booking_date": booking_date,
-                    "time_block": time_block,
+                    "time_block": time_block.capitalize(),
                     "selected_slots": selected_slots,
                     "total_price": str(total_price),
                     "phone": phone,
-                    "promo_code": promo_code or "None",
+                    "promo_code": promo_display,
+                    "paddle_rental": paddle_line,
                 }
             },
             timeout=10
         )
-        print(f"EmailJS status: {response.status_code}")
-        print(f"EmailJS response: {response.text}")
+        if response.status_code == 200:
+            print(f"[EmailJS] ✅ Sent to {to_email}")
+            return True
+        else:
+            print(f"[EmailJS] ❌ Failed — status {response.status_code}: {response.text}")
+            return False
     except Exception as e:
-        print(f"Email send failed: {e}")
+        print(f"[EmailJS] ❌ Exception: {e}")
+        return False
 
 @tool
 def edit_booking_total(
