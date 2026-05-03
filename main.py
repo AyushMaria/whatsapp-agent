@@ -1,19 +1,19 @@
-from fastapi import FastAPI, Form, BackgroundTasks
+from fastapi import FastAPI, Form, BackgroundTasks, Header, HTTPException
 from fastapi.responses import Response
 from twilio.rest import Client
 from dotenv import load_dotenv
 from agent import run_agent, run_admin_agent
 from sessions import get_session, update_session, is_admin_mode, set_admin_mode
+from reminders import run_booking_reminders
 import os
 
 load_dotenv()
 
 app = FastAPI()
-
 twilio_client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
 TWILIO_NUMBER = os.environ["TWILIO_WHATSAPP_NUMBER"]
-
 ADMIN_PHONE = os.getenv("ADMIN_PHONE", "").replace("+91", "").replace(" ", "")
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 
 async def process_message(user_message: str, sender: str):
@@ -72,6 +72,18 @@ async def webhook(
     """Responds to Twilio instantly, processes in background."""
     background_tasks.add_task(process_message, Body.strip(), From)
     return Response(content="", media_type="application/xml")
+
+
+@app.post("/cron/send-booking-reminders")
+def send_booking_reminders(x_cron_secret: str = Header(default="")):
+    if not CRON_SECRET or x_cron_secret != CRON_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    result = run_booking_reminders(window_start_mins=60, window_end_mins=120)
+    return {
+        "status": "ok",
+        **result
+    }
 
 
 @app.get("/health")
