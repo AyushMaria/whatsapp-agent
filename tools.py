@@ -1,15 +1,26 @@
 from supabase import create_client
 from langchain_core.tools import tool
 from datetime import date, datetime, timedelta
+from twilio.rest import Client
 import os, httpx, json, re
 from dotenv import load_dotenv
 from typing import List
 import pytz
 
-load_dotenv()  
-
+load_dotenv()
 
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_ANON_KEY"))
+
+twilio_client = Client(
+    os.getenv("TWILIO_ACCOUNT_SID"),
+    os.getenv("TWILIO_AUTH_TOKEN")
+)
+TWILIO_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")
+
+ACE_GREETING_MESSAGE = (
+    "Heyy there! 👋 Ace at your service. "
+    "How can I help you with your pickleball court booking today? 🏸"
+)
 
 def normalize_phone(phone: str) -> str:
     digits = re.sub(r"\D", "", phone or "")
@@ -41,6 +52,37 @@ TIME_SLOTS = {
                   "9:30 PM - 10:00 PM", "10:00 PM - 10:30 PM","10:30 PM - 11:00 PM",
                   "11:00 PM - 11:30 PM", "11:30 PM - 12:00 AM",],
 }
+
+@tool
+def initiate_message(phone: str) -> str:
+    """
+    Admin: Send Ace's standard greeting message to a WhatsApp number.
+    Use when the admin says things like:
+    - 'Send a message to +919876543210'
+    - 'Initiate a message to 9876543210'
+
+    This sends only the standard greeting. It does not create a booking.
+    """
+    try:
+        canonical_phone = normalize_phone(phone)
+        digits = re.sub(r"\D", "", canonical_phone or "")
+
+        if len(digits) < 12:
+            return "❌ Invalid phone number. Please provide a full Indian mobile number like +919876543210."
+
+        if not TWILIO_NUMBER:
+            return "❌ Twilio WhatsApp number is not configured."
+
+        twilio_client.messages.create(
+            from_=TWILIO_NUMBER,
+            to=f"whatsapp:{canonical_phone}",
+            body=ACE_GREETING_MESSAGE
+        )
+
+        return f"✅ Initiation message sent successfully to {canonical_phone}."
+
+    except Exception as e:
+        return f"❌ Failed to send initiation message: {str(e)}"
 
 
 @tool
@@ -1038,3 +1080,5 @@ def sync_website_customers(dry_run: bool = False) -> str:
 
     except Exception as e:
         return f"Error syncing customers: {str(e)}"
+
+

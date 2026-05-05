@@ -3,15 +3,30 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from tools import (
     check_available_slots, create_booking, cancel_booking, get_my_bookings,
     get_all_bookings, delete_booking_by_id, block_slots, get_booking_stats,
-    get_bookings_by_phone, get_bookings_by_name, create_promo_code, edit_booking,
-    edit_booking_total, get_revenue, edit_promo_code, add_paddle_rental,
-    get_customer_by_phone,create_customer_profile, sync_website_customers
+    get_bookings_by_phone, get_bookings_by_name, create_promo_code,
+    edit_booking, edit_booking_total, get_revenue, edit_promo_code,
+    add_paddle_rental, get_customer_by_phone, create_customer_profile,
+    sync_website_customers, initiate_message
 )
 import os
 from datetime import datetime
 import pytz
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+
+customer_tools = [
+    check_available_slots, create_booking, cancel_booking, 
+    get_my_bookings, add_paddle_rental, get_customer_by_phone, 
+    create_customer_profile
+]
+
+admin_tools = [
+    check_available_slots, create_booking, cancel_booking, get_my_bookings,
+    get_all_bookings, delete_booking_by_id, block_slots, get_booking_stats,
+    get_bookings_by_phone, get_bookings_by_name, create_promo_code,
+    edit_booking, edit_booking_total, get_revenue, edit_promo_code,
+    get_customer_by_phone, sync_website_customers, initiate_message
+]
 
 def get_system_prompt(phone: str = ""):
     ist = pytz.timezone("Asia/Kolkata")
@@ -211,6 +226,13 @@ def get_admin_prompt():
         - get_booking_stats() — revenue and booking summary
         - create_booking(...) — book on behalf of a customer
         - cancel_booking(...) — cancel any booking
+        - initiate_message(phone) — send Ace's standard greeting to a WhatsApp number so the customer sees Ace's opening message and can continue the conversation
+            Rules for outbound initiation:
+                - If I say "Send a message to +91xxxxxxxxxx" or "Initiate a message to +91xxxxxxxxxx", call initiate_message(phone) immediately.
+                - Do not ask follow-up questions if a valid phone number is already present.
+                - This action only sends Ace's greeting message. It does not create a booking.
+                - After the tool succeeds, reply with a short confirmation mentioning the number.
+                - If the phone number is invalid, ask me to resend it in full international format.
         - get_bookings_by_phone(phone) — view all bookings for a specific customer number
         - get_bookings_by_name(names) — search bookings by customer name (partial match)
         - create_promo_code(code, discount_type, discount_value, ...) — create a new promo code
@@ -234,20 +256,6 @@ def get_admin_prompt():
         Always confirm before deleting or blocking.
         """
 
-customer_tools = [
-    check_available_slots, create_booking, cancel_booking, 
-    get_my_bookings, add_paddle_rental, get_customer_by_phone, 
-    create_customer_profile
-]
-
-admin_tools = [
-    check_available_slots, create_booking, cancel_booking,
-    get_my_bookings, get_all_bookings, delete_booking_by_id,
-    block_slots, get_booking_stats, get_bookings_by_phone, 
-    get_bookings_by_name, create_promo_code, edit_booking,
-    edit_booking_total, get_revenue, edit_promo_code, get_customer_by_phone,
-    sync_website_customers
-]
 
 print("ADMIN TOOLS LOADED:", [getattr(t, "name", str(t)) for t in admin_tools])
 # AFTER
