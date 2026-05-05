@@ -15,7 +15,9 @@ twilio_client = Client(
     os.getenv("TWILIO_ACCOUNT_SID"),
     os.getenv("TWILIO_AUTH_TOKEN")
 )
+
 TWILIO_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER")
+WHATSAPP_INIT_TEMPLATE_SID = os.getenv("WHATSAPP_INIT_TEMPLATE_SID")
 
 ACE_GREETING_MESSAGE = (
     "Heyy there! 👋 Ace at your service. "
@@ -56,35 +58,64 @@ TIME_SLOTS = {
 @tool
 def initiate_message(phone: str) -> str:
     """
-    Admin: Send Ace's standard greeting message to a WhatsApp number.
-    Use when the admin says things like:
-    - 'Send a message to +919876543210'
-    - 'Initiate a message to 9876543210'
+    Admin only: Send Ace's standard greeting to a WhatsApp number
+    using an approved WhatsApp template.
 
-    This sends only the standard greeting. It does not create a booking.
+    Use when the admin says:
+    - "Send a message to +919876543210"
+    - "Initiate a message to 9876543210"
+
+    This sends only the standard greeting and does not create a booking.
     """
     try:
         canonical_phone = normalize_phone(phone)
         digits = re.sub(r"\D", "", canonical_phone or "")
 
-        if len(digits) < 12:
+        if len(digits) != 12 or not digits.startswith("91"):
             return "❌ Invalid phone number. Please provide a full Indian mobile number like +919876543210."
+
+        local_number = digits[-10:]
+        if local_number[0] not in "6789":
+            return f"❌ {canonical_phone} does not look like a valid Indian mobile number."
 
         if not TWILIO_NUMBER:
             return "❌ Twilio WhatsApp number is not configured."
 
-        twilio_client.messages.create(
+        if not WHATSAPP_INIT_TEMPLATE_SID:
+            return "❌ WhatsApp initiation template SID is not configured."
+
+        message = twilio_client.messages.create(
             from_=TWILIO_NUMBER,
             to=f"whatsapp:{canonical_phone}",
-            body=ACE_GREETING_MESSAGE
+            content_sid=WHATSAPP_INIT_TEMPLATE_SID,
+            content_variables=json.dumps({
+                "1": "there"
+            })
         )
 
-        return f"✅ Initiation message sent successfully to {canonical_phone}."
+        print(
+            f"[INITIATE_MESSAGE] to={canonical_phone} "
+            f"sid={message.sid} status={message.status} "
+            f"error_code={message.error_code}"
+        )
+
+        return (
+            f"✅ Initiation request accepted for {canonical_phone}. "
+            f"Twilio SID: {message.sid}. Initial status: {message.status}. "
+            f"Delivery is pending confirmation."
+        )
 
     except Exception as e:
-        return f"❌ Failed to send initiation message: {str(e)}"
+        error_text = str(e)
 
+        if "63016" in error_text:
+            return (
+                "❌ Failed to initiate message because this WhatsApp send is outside "
+                "the 24-hour customer window and no valid approved template was used. "
+                "Please configure and use a WhatsApp Content Template."
+            )
 
+        return f"❌ Failed to send initiation message: {error_text}"
 @tool
 def check_available_slots(booking_date: str, time_block: str) -> str:
     """

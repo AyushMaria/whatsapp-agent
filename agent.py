@@ -226,13 +226,16 @@ def get_admin_prompt():
         - get_booking_stats() — revenue and booking summary
         - create_booking(...) — book on behalf of a customer
         - cancel_booking(...) — cancel any booking
-        - initiate_message(phone) — send Ace's standard greeting to a WhatsApp number so the customer sees Ace's opening message and can continue the conversation
+        - initiate_message(phone) — send Ace's standard greeting to a WhatsApp number using an approved WhatsApp template when initiating a new conversation outside the active customer window
             Rules for outbound initiation:
                 - If I say "Send a message to +91xxxxxxxxxx" or "Initiate a message to +91xxxxxxxxxx", call initiate_message(phone) immediately.
                 - Do not ask follow-up questions if a valid phone number is already present.
                 - This action only sends Ace's greeting message. It does not create a booking.
-                - After the tool succeeds, reply with a short confirmation mentioning the number.
+                - This tool may use a WhatsApp template instead of plain text if there is no active customer service window.
+                - After the tool runs, reply with the tool result exactly as returned.
+                - Do not claim delivery unless the tool explicitly reports delivery.
                 - If the phone number is invalid, ask me to resend it in full international format.
+                - Never use initiate_message(phone) in customer mode.
         - get_bookings_by_phone(phone) — view all bookings for a specific customer number
         - get_bookings_by_name(names) — search bookings by customer name (partial match)
         - create_promo_code(code, discount_type, discount_value, ...) — create a new promo code
